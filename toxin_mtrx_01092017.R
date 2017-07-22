@@ -1,7 +1,7 @@
 #####################################################################################
 #
 #
-#  Model Kv2.1 w/Gxtx
+#  Model Kv2.1 Class I Model 
 #  D.C.Tilley - 08/2016 - drew.tilley@gmail.com
 #
 #  IN:         N = number of ms to simulate
@@ -15,10 +15,37 @@
 #
 #####################################################################################
 
-# Required library for renaming dataframes #
-# library(plyr)
+SigmaTau2rateMatrix <- function(sigma,tau){
+    # Tau should be in passed in ms
+    # model function to transform sigma -> alpha/kopen 
+    model.AoC<- c(1.28,2.56,5.12,10.24,20.48,40.96,81.92,163.84)
+    model.sigmas <- c(5.02802,3.58649,2.28934,1.60055,1.28164,1.13578,1.06646,1.03299)
+    sigma2AoC <- splinefun(x=log(model.sigmas),y=log(model.AoC))
 
-TilleyK2Gxtx <- function(A,x,N,dt,allstates=FALSE,returnNDX=6,gating=NULL,labels=NULL){
+    # model function to transform AoC -> rates
+    model.AlphaTau <- c(1.47633,2.31074,4.37302,9.04926,18.9965,39.299,80.1666,169.245)
+    AoC2AT <- splinefun(x=log(model.AoC),y=log(model.AlphaTau))
+
+    # Calculate rates
+    if (sigma < 4 && sigma > 1.03299){
+        AoC <- exp(sigma2AoC(log(sigma)))
+        AT <- exp(AoC2AT(log(AoC)))
+        a <- AT/tau
+        c <- (AoC^-1)*a
+        rates <- c(a,c)
+        return(rates)
+    } else {
+        print("Sigma Value is out of range.")
+        return()
+    }
+
+}
+
+
+TilleyK2Gxtx <- function(A,x,N,dt,allstates=FALSE,returnNDX=6,gating=NULL){
+    # Take this out
+    labels <- NULL
+
     
     # Initialize time, output, gating currents
     t <- (0:(N/dt))*dt
@@ -106,35 +133,31 @@ runge4kuttaIG <- function(A,x,dt){
     return(x1)
 }
 
-# Initialize State Vector for Triangle Model Gxtx Interaction
-initX <- function(ndx){
-    x <- matrix(ncol=1,nrow=16,data=0)
+# Initialize State Vector for 6 State Gating Model
+initX <- function(ndx=1){
+    x <- matrix(ncol=1,nrow=6,data=0)
     x[ndx,1] <- 1
     return(x)
 }
 
-# Initialize Transfer Matrix for Triangle Model Gxtx Interaction
-initMatrix <- function(a,b,c,d,kon,koff){
-    m <- matrix(ncol=16,nrow=16,data=0)
+# Initialize Transfer Matrix for 6 State Gating Model
+initMatrix <- function(a,b,c,d){
+    m <- matrix(ncol=6,nrow=6,data=0)
     # Populate transitions R4
-    m[1,1] <- -(4*a+4*kon)
+    m[1,1] <- -(4*a)
     m[1,2] <- b
-    m[1,7] <- koff
     # Populate transitions R3
-    m[2,2] <- -(3*a + 3*kon + b)
+    m[2,2] <- -(3*a +  b)
     m[2,1] <- 4*a
     m[2,3] <- 2*b
-    m[2,8] <- koff
     # Populate transitions R2
-    m[3,3] <- -(2*a + 2*kon + 2*b)
+    m[3,3] <- -(2*a + 2*b)
     m[3,2] <- 3*a
     m[3,4] <- 3*b
-    m[3,9] <- koff
     # Populate transitions R1
-    m[4,4] <- -(a + kon + 3*b)
+    m[4,4] <- -(a + 3*b)
     m[4,3] <- 2*a
     m[4,5] <- 4*b
-    m[4,10] <- koff
     # Populate transitions A
     m[5,5] <- -(c + 4*b)
     m[5,4] <- a
@@ -142,61 +165,13 @@ initMatrix <- function(a,b,c,d,kon,koff){
     # Populate transitions 0
     m[6,6] <- -(d)
     m[6,5] <- c
-    # Populate transitions R4tx
-    m[7,7] <- -(koff + 3*a + 3*kon)
-    m[7,8] <- b
-    m[7,11] <- 2*koff
-    m[7,1] <- 4*kon
-    # Populate transitions R3tx
-    m[8,8] <- -(koff + 2*a + b + 2*kon)
-    m[8,7] <- 3*a
-    m[8,9] <- 2*b
-    m[8,12] <- 2*koff
-    m[8,2] <- 3*kon
-    # Populate transitions R2tx
-    m[9,9] <- -(koff + a + kon + 2*b)
-    m[9,8] <- 2*a
-    m[9,10] <- 3*b
-    m[9,13] <- 2*koff
-    m[9,3] <- 2*kon
-    # Populate transitions R1tx
-    m[10,10] <- -(koff + 3*b)
-    m[10,9] <- a
-    m[10,4] <- kon
-    # Populate transitions R4tx2
-    m[11,11] <- -(2*koff + 2*a + 2*kon)
-    m[11,12] <- b
-    m[11,14] <- 3*koff
-    m[11,7] <- 3*kon
-    # Populate transitions R3tx2
-    m[12,12] <- -(2*koff + a + kon + b)
-    m[12,13] <- 2*b
-    m[12,11] <- 2*a
-    m[12,15] <- 3*koff
-    m[12,8] <- 2*kon
-    # Populate transitions R2tx2
-    m[13,13] <- -(2*koff + 2*b)
-    m[13,12] <- a
-    m[13,9] <- kon
-    # Populate transitions R4tx3
-    m[14,14] <- -(3*koff + a + kon)
-    m[14,15] <- b
-    m[14,11] <- 2*kon
-    m[14,16] <- 4*koff
-    # Populate transitions R3tx3
-    m[15,15] <- -(3*koff + b)
-    m[15,14] <- a
-    m[15,12] <- kon
-    # Populate transitions R4tx4
-    m[16,16] <- -(4*koff)
-    m[16,14] <- kon
 
     return(m)
 }
 
-# Initialize Gating Transfer Matrix for Triangle Model Gxtx Interaction
-initGatrix <- function(a,b,c,d){
-    m <- matrix(ncol=16,nrow=16,data=0)
+# Initialize Gating Transfer Matrix for 6 State Gating Model
+initGatrix <- function(a,b){
+    m <- matrix(ncol=6,nrow=6,data=0)
     # Populate transitions R4
     m[1,1] <- (4*a)
 
@@ -210,40 +185,12 @@ initGatrix <- function(a,b,c,d){
     m[4,4] <- (a - 3*b)
 
     # Populate transitions A
-    m[5,5] <- (c - 4*b)
-
-    # Populate transitions 0
-    m[6,6] <- -(d)
-
-    # Populate transitions R4tx
-    m[7,7] <- (3*a)
-
-    # Populate transitions R3tx
-    m[8,8] <- (2*a - b)
-
-    # Populate transitions R2tx
-    m[9,9] <- (a - 2*b)
-
-    # Populate transitions R1tx
-    m[10,10] <- -(3*b)
-
-    # Populate transitions R4tx2
-    m[11,11] <- (2*a)
-
-    # Populate transitions R3tx2
-    m[12,12] <- (a - b)
-
-    # Populate transitions R2tx2
-    m[13,13] <- -(2*b)
-
-    # Populate transitions R4tx3
-    m[14,14] <- a
-
-    # Populate transitions R3tx3
-    m[15,15] <- -(b)
+    m[5,5] <- (- 4*b)
 
     return(m)
 }
+
+# Analysis Functions 
 library(minpack.lm)
 exppower <- function(ds,n,tau,trace=FALSE,plot=FALSE,coefonly=TRUE,...){
     # Fit Between 0.1 and 0.9
